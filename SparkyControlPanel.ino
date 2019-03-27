@@ -110,11 +110,11 @@ void setup(){
 /////////////////////  MAIN LOOP  /////////////////////////////
 void loop(){
   // read our potentiometers and buttons and store raw data in data structure for transmission
-  txdata.stickLx = 1023-analogRead(L_STICK_X);
-  txdata.stickLy = 1023-analogRead(L_STICK_Y);
+  txdata.stickLx = analogRead(L_STICK_X);
+  txdata.stickLy = analogRead(L_STICK_Y);
   txdata.stickLbutton = !digitalRead(L_STICK_BUTTON);
-  txdata.stickRx = 1023-analogRead(R_STICK_X);
-  txdata.stickRy = 1023-analogRead(R_STICK_Y);
+  txdata.stickRx = analogRead(R_STICK_X);
+  txdata.stickRy = analogRead(R_STICK_Y);
   txdata.stickRbutton = !digitalRead(R_STICK_BUTTON);
 
   txdata.drivemode = !digitalRead(DRIVE_MODE);
