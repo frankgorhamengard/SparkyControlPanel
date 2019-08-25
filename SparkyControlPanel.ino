@@ -1,13 +1,10 @@
-/*This is code for the Sparky Control Panel Prototype 3
+/*This is code for the 3 common Sparky Control Panels
  * with 7 segment
 
-This sketch reads controls and sends command values to the Sparky robot.
+This sketch reads button, joystick and knob controls and sends command values to the Sparky robot.
 It has a debug flag turned off for normal running.
 
-It has controlled 5 bar LED showing activity in the panel.
-
 Developed by Miss Daisy FRC Team 341
- 
 */
 
 //  this is for test mode
@@ -18,20 +15,19 @@ boolean runTimeMonitorEnabled = false;
 // D8 - AltSoftSerial RX
 // D9 - AltSoftSerial TX
 
+// this is for 7 segment display
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include "Adafruit_LEDBackpack.h"
-
 Adafruit_7segment matrix = Adafruit_7segment();
 
+// this is for send and recieve bluetooth communication channels
 #include <EasyTransfer.h>
 //create two objects
 EasyTransfer ETin, ETout; 
-
 // Transfer data strucures must be the same at both ends
 //   so, they are defined in a library included by both sketches
 #include <SparkyXfrBuffers.h>
-
 // declare global structures for data used by the transfer objects
 // reverse naming on opposite ends
 FROM_SPARKY_DATA_STRUCTURE rxdata;
@@ -50,34 +46,29 @@ TO_SPARKY_DATA_STRUCTURE txdata;
 #define R_STICK_BUTTON  3
 #define HC05_POWER_ON_LOW_2  2
 
-#define L_STICK_X      2    // left stick attached to A0,A1,D2
 //#define L_STICK_Y      1
-#define R_STICK_X      0    //right stick attached to A2,A3,D3
-#define R_STICK_Y      1
-#define SHOOTERSPEED 3
+#define R_STICK_X    0    // vertical forward-backward stick axis attached to A0
+//#define R_STICK_Y      1
+#define L_STICK_X    2    // horizontal left-right-turn stick axis attached to A2
+#define SHOOTERSPEED 3    // shooter peed knob attached to A3
 
 unsigned long triggerTime;
 unsigned long headingTime;
 const int panelLedArr[5] = {5,6,9,10,11}; //map of wired pins to LEDs
 long int messageCounter = 0;
 
-//int stickLxOffset, stickLyOffset, stickRxOffset, stickRyOffset;
-//const int stickLxOffset = 512 - 306; //analogRead(L_STICK_Y); //offset = 512 - read null stick 
-//const int stickLyOffset = 512 - 306; //analogRead(L_STICK_X);
-//const int stickRxOffset = 512 - 235; //analogRead(R_STICK_Y);
-//const int stickRyOffset = 512 - 163; //analogRead(R_STICK_X);
-
 /////////////////////////////////////////////////////////////////////////////
 // FUNCTION: setLED,   returns nothing
 // ARGUMENTS: LEDnum is value 0 to 4, brightness is 0 (off) to 255 (full on)
 void setLED(int LEDnum, unsigned int brightness) {
-  if ( brightness > 255 ) brightness = 255;
-  unsigned long brightness_l = brightness & 255; 
-  //  index to pins, use panelLedArr   ,  value to write is non-linear
-  if ( 0 <= LEDnum && LEDnum < 5 ) {
-    int LEDoutput = min( 255-((brightness_l+7)/8), (255-brightness_l)*3 );
-   analogWrite( panelLedArr[LEDnum], LEDoutput );
-  }
+//  // not using LED outputs on initial version
+//  if ( brightness > 255 ) brightness = 255;
+//  unsigned long brightness_l = brightness & 255; 
+//  //  index to pins, use panelLedArr   ,  value to write is non-linear
+//  if ( 0 <= LEDnum && LEDnum < 5 ) {
+//    int LEDoutput = min( 255-((brightness_l+7)/8), (255-brightness_l)*3 );
+//   analogWrite( panelLedArr[LEDnum], LEDoutput );
+//  }
 }
 /////////////////////////////////////////////////////////////////////////////////
 // called once at start
@@ -109,13 +100,14 @@ void setup(){
 
   digitalWrite(HC05_POWER_ON_LOW_2, LOW );  // now turn the HC05 on 
 
-  //  init LEDs     //////////////////////////
-  for (int i=0; i<5; i++) {
-    pinMode( panelLedArr[i], OUTPUT);
-    setLED( i, 255); // on
-    delay(1500);
-    setLED( i, 0);
-  }
+//  //  init LEDs     //////////////////////////
+//  // not using LED outputs on initial version
+//  for (int i=0; i<5; i++) {
+//    pinMode( panelLedArr[i], OUTPUT);
+//    setLED( i, 255); // on
+//    delay(1500);
+//    setLED( i, 0);
+//  }
 
   matrix.writeDigitRaw(0, 0 );
   matrix.writeDigitRaw(1, 0 );
@@ -137,7 +129,7 @@ void setup(){
   triggerTime = millis() + 3000;  // 3 seconds from now
   delay(2000);
   altser.println();
-  altser.print("Sparky Control Panel proto3    :Created ");
+  altser.print("Universal Sparky Control Panel :Created ");
   altser.print( __DATE__ );
   altser.print(" ");
   altser.println( __TIME__ );
@@ -145,12 +137,6 @@ void setup(){
     runTimeMonitorEnabled = false;
     altser.println("Runtime Monitor is disabled");
   }
-  // assume sticks are centered, store offset
-//  stickLxOffset = 512 - 306; //analogRead(L_STICK_Y);
-//  stickLyOffset = 512 - 306; //analogRead(L_STICK_X);
-//  stickRxOffset = 512 - 235; //analogRead(R_STICK_Y);
-//  stickRyOffset = 512 - 161; //analogRead(R_STICK_X);
-  
 }
 /////////////////////  MAIN LOOP  /////////////////////////////
 void loop(){
@@ -192,7 +178,6 @@ void loop(){
   }
   //then we will go ahead and send that data out
   ETout.sendData();
-
   
  //there's a loop here so that we run the recieve function more often then the 
  //transmit function. This is important due to the slight differences in 
