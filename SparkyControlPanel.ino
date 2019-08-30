@@ -36,12 +36,12 @@ TO_SPARKY_DATA_STRUCTURE txdata;
 #define DRIVE_MODE        13 
 #define SYSTEM_ENABLE   12
 //  #define PANEL_LED_5     11  panel LEDs are controlled by setLED function, 0 to 4
-//  #define PANEL_LED_4     10
-#define ENABLE_LED_3     9
+#define ENABLE_LED_3     3    // pin 10  
+// pin 9 used by altser
 #define SHOOT_BUTTON    8
 #define INTAKE_BUTTON   7
-  #define INTAKEBUTTON_LED     0
-  #define SHOOTBUTTON_LED     1
+  #define INTAKEBUTTON_LED     0   //pin 5
+  #define SHOOTBUTTON_LED     1    //pin 6
 #define TEST_SWITCH     4
 #define R_STICK_BUTTON  3
 #define HC05_POWER_ON_LOW_2  2
@@ -61,14 +61,16 @@ long int messageCounter = 0;
 // FUNCTION: setLED,   returns nothing
 // ARGUMENTS: LEDnum is value 0 to 4, brightness is 0 (off) to 255 (full on)
 void setLED(int LEDnum, unsigned int brightness) {
-//  // not using LED outputs on initial version
-//  if ( brightness > 255 ) brightness = 255;
-//  unsigned long brightness_l = brightness & 255; 
-//  //  index to pins, use panelLedArr   ,  value to write is non-linear
-//  if ( 0 <= LEDnum && LEDnum < 5 ) {
-//    int LEDoutput = min( 255-((brightness_l+7)/8), (255-brightness_l)*3 );
-//   analogWrite( panelLedArr[LEDnum], LEDoutput );
-//  }
+  if ( 0 <= LEDnum && LEDnum < 5 ) {
+    // not using LED outputs on initial version
+    if ( brightness > 255 ) brightness = 255;
+    unsigned long brightness_l = brightness & 255; 
+    //  index to pins, use panelLedArr   ,  value to write is non-linear
+    int LEDoutput = min( 255-((brightness_l+7)/8), (255-brightness_l)*3 );
+    if (LEDnum<2)
+      LEDoutput = 255 - LEDoutput;
+    analogWrite( panelLedArr[LEDnum], LEDoutput );
+  }
 }
 /////////////////////////////////////////////////////////////////////////////////
 // called once at start
@@ -101,13 +103,13 @@ void setup(){
   digitalWrite(HC05_POWER_ON_LOW_2, LOW );  // now turn the HC05 on 
 
 //  //  init LEDs     //////////////////////////
-//  // not using LED outputs on initial version
-//  for (int i=0; i<5; i++) {
-//    pinMode( panelLedArr[i], OUTPUT);
-//    setLED( i, 255); // on
-//    delay(1500);
-//    setLED( i, 0);
-//  }
+  for (int i=0; i<5; i++) {
+    pinMode( panelLedArr[i], OUTPUT);
+    setLED( i, 255); // on
+    delay(500);
+    setLED( i, 0);
+    delay(500);
+  }
 
   matrix.writeDigitRaw(0, 0 );
   matrix.writeDigitRaw(1, 0 );
@@ -150,7 +152,7 @@ void loop(){
   txdata.stickRx = txdata.stickRy;  
   txdata.stickRbutton = LOW;
 
-  txdata.drivemode = !digitalRead(DRIVE_MODE);
+  txdata.drivemode = 1;  //2nd generation control panels only do tank mode.
   txdata.enabled = !digitalRead(SYSTEM_ENABLE);
   
   txdata.shooterspeed = analogRead(SHOOTERSPEED);
@@ -245,6 +247,7 @@ void loop(){
     static unsigned long updateDue;
     unsigned long now;
     static int phase;
+    unsigned int phasefade;
     if ( runTimeMonitorEnabled ) {
       altser.println("Monitor Deactivated");
     }
@@ -253,6 +256,12 @@ void loop(){
     if ( now > updateDue ) {
       updateDue = now + 100; // 10 updates per second, max
       phase++; phase &= 7;
+      if ( phase < 4 ) {
+        phasefade = 210 + (phase * 10);
+      } else {
+        phasefade = 210 + ( 7-phase) * 10;
+      }
+
       if ( txdata.enabled ) {
         setLED( ENABLE_LED_3, 255 );
         if ( rxdata.ballready ) {
@@ -268,21 +277,17 @@ void loop(){
             }
           } else {
             // intake button not pushed fade LED slow
-            if ( phase < 4 ) {
-              setLED( INTAKEBUTTON_LED, 210 + (phase * 10) );
-            } else {
-              setLED( INTAKEBUTTON_LED, 210 + ( 7-phase) * 10);
-            }
+            setLED( INTAKEBUTTON_LED, phasefade );
           }
           setLED( SHOOTBUTTON_LED, 0 );
         }  
       } else {
-        setLED( INTAKEBUTTON_LED, 30 );
-        setLED( SHOOTBUTTON_LED, 30 );
-        setLED( ENABLE_LED_3, 30 );
+        setLED( INTAKEBUTTON_LED, 0 );
+        setLED( SHOOTBUTTON_LED, 0 );
+        setLED( ENABLE_LED_3, 0 );
       }
-      setLED( 2, (analogRead(R_STICK_X)+3)>>2);
-      setLED( 4, buttonValue);
+      //setLED( 3, (analogRead(R_STICK_X)+3)>>2);
+      //setLED( 4, buttonValue);
     }  
   }
 
