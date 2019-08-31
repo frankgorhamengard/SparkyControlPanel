@@ -33,7 +33,7 @@ EasyTransfer ETin, ETout;
 FROM_SPARKY_DATA_STRUCTURE rxdata;
 TO_SPARKY_DATA_STRUCTURE txdata;
 
-#define DRIVE_MODE        13 
+//#define DRIVE_MODE        13 
 #define SYSTEM_ENABLE   12
 //  #define PANEL_LED_5     11  panel LEDs are controlled by setLED function, 0 to 4
 #define ENABLE_LED_3     3    // pin 10  
@@ -61,14 +61,17 @@ long int messageCounter = 0;
 // FUNCTION: setLED,   returns nothing
 // ARGUMENTS: LEDnum is value 0 to 4, brightness is 0 (off) to 255 (full on)
 void setLED(int LEDnum, unsigned int brightness) {
-  if ( 0 <= LEDnum && LEDnum < 5 ) {
-    // not using LED outputs on initial version
-    if ( brightness > 255 ) brightness = 255;
-    unsigned long brightness_l = brightness & 255; 
+  if ( brightness > 255 ) brightness = 255;
+  signed long brightness_l = brightness; 
+  if ( 0 <= LEDnum && LEDnum < 2 ) {
     //  index to pins, use panelLedArr   ,  value to write is non-linear
+    // these LEDs are high active
+    int LEDoutput = max( ((brightness_l+7)/8), (brightness_l*3)-510 );
+    analogWrite( panelLedArr[LEDnum], LEDoutput );
+  } else if ( LEDnum < 5 ) {
+    //  index to pins, use panelLedArr   ,  value to write is non-linear
+    // these LEDs are LOW active
     int LEDoutput = min( 255-((brightness_l+7)/8), (255-brightness_l)*3 );
-    if (LEDnum<2)
-      LEDoutput = 255 - LEDoutput;
     analogWrite( panelLedArr[LEDnum], LEDoutput );
   }
 }
@@ -120,13 +123,13 @@ void setup(){
 
  
   // init inputs and enable pullup
-  pinMode(DRIVE_MODE      , INPUT_PULLUP); // 13
+  pinMode(13              , INPUT_PULLUP); // 13 unused
   pinMode(SYSTEM_ENABLE   , INPUT_PULLUP); // 12 LOW is ENABLEd
   pinMode(SHOOT_BUTTON    , INPUT_PULLUP); // 8 LOW is SHOOT
   pinMode(INTAKE_BUTTON   , INPUT_PULLUP); // 7 LOW is INATKE
   pinMode(TEST_SWITCH     , INPUT_PULLUP); // 4 LOW is on
-  pinMode(R_STICK_BUTTON  , INPUT_PULLUP); // 3 LOW is active
-  // pin 2 is setup at beginning
+  pinMode(R_STICK_BUTTON  , INPUT_PULLUP); // 3 LOW is active   not used
+  // other pins setup before this
   
   triggerTime = millis() + 3000;  // 3 seconds from now
   delay(2000);
@@ -261,9 +264,7 @@ void loop(){
       } else {
         phasefade = 210 + ( 7-phase) * 10;
       }
-
       if ( txdata.enabled ) {
-        setLED( ENABLE_LED_3, 255 );
         if ( rxdata.ballready ) {
           setLED( INTAKEBUTTON_LED, 0 );
           setLED( SHOOTBUTTON_LED, 255 );
@@ -284,12 +285,35 @@ void loop(){
       } else {
         setLED( INTAKEBUTTON_LED, 0 );
         setLED( SHOOTBUTTON_LED, 0 );
-        setLED( ENABLE_LED_3, 0 );
       }
-      //setLED( 3, (analogRead(R_STICK_X)+3)>>2);
-      //setLED( 4, buttonValue);
+      // use enable LED to show states
+      static int lastRXcount;
+      static int lastTXcount;
+      //these should change in 100 ms
+      int commOK = (rxdata.packetreceivedcount != lastRXcount) && (rxdata.transmitpacketcount != lastTXcount); 
+      lastRXcount = rxdata.packetreceivedcount;
+      lastTXcount = rxdata.transmitpacketcount;
+      if ( commOK ) {
+        if ( txdata.enabled ) {
+          setLED( ENABLE_LED_3, 255 );  // on
+        } else{
+          if (phase) {
+            setLED( ENABLE_LED_3, 0 ); // pulsing means not enabled
+          } else {
+            setLED( ENABLE_LED_3, 255 ); // pulsing means not enabled
+          }
+          //analogWrite(10,255-phase);
+        }
+      } else {
+        // no comm - flashing
+        if ( phase & 1 ) {
+          setLED( ENABLE_LED_3, 128 );
+        } else {
+          setLED( ENABLE_LED_3, 0  );
+        }
+      }
     }  
-  }
+  } // end of NORMAL DISPLAY
 
   ///////////////////////  TWI code for 7segment display interface ///////////
   if ( wireTimer1 < (millis() - 500) ) {
