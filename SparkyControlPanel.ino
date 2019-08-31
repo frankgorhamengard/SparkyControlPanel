@@ -298,11 +298,10 @@ void loop(){
           setLED( ENABLE_LED_3, 255 );  // on
         } else{
           if (phase) {
-            setLED( ENABLE_LED_3, 0 ); // pulsing means not enabled
+            setLED( ENABLE_LED_3, 0 ); //  short flashing means not enabled
           } else {
-            setLED( ENABLE_LED_3, 255 ); // pulsing means not enabled
+            setLED( ENABLE_LED_3, 255 ); 
           }
-          //analogWrite(10,255-phase);
         }
       } else {
         // no comm - flashing
@@ -317,22 +316,32 @@ void loop(){
 
   ///////////////////////  TWI code for 7segment display interface ///////////
   if ( wireTimer1 < (millis() - 500) ) {
-    int calctemp;
+    int calctmp;
     static int speeddisplay;
     
     wireTimer1 = millis(); // reset
     wireTimer0 = micros();
-
-    calctemp = ((rxdata.supplyvoltagereading*15)+17) / 142; //tenths of a volt resolution
-    matrix.writeDigitNum(0, (calctemp/10) % 10 , true);
-    matrix.writeDigitNum(1, calctemp % 10 , false);
-    matrix.drawColon(true);
-    calctemp = (txdata.shooterspeed * 15) / 152;
-    if ( abs(calctemp-speeddisplay)>1 ) {
-      speeddisplay = calctemp;
+    
+    matrix.clear();
+    if ( txdata.enabled ) {
+      calctmp = (txdata.shooterspeed * 15) / 152;
+      if ( abs(calctmp-speeddisplay)>1 ) {
+        speeddisplay = calctmp;
+      }
+      matrix.print(calctmp);
+//      matrix.writeDigitNum(1, (speeddisplay / 100) , false);
+//      matrix.writeDigitNum(3, (speeddisplay / 10) % 10 , false);
+//      matrix.writeDigitNum(4, speeddisplay % 10, false);
+    } else {
+      calctmp = ((rxdata.supplyvoltagereading*15)+71) / 142; //tenths of a volt resolution
+      matrix.writeDigitNum(0, (calctmp/100) , false);
+      matrix.writeDigitNum(1, (calctmp/10) % 10 , true);
+      matrix.writeDigitNum(3, calctmp % 10 , false);
+      //matrix.drawColon(true);
+      
     }
-    matrix.writeDigitNum(3, (speeddisplay / 10) , false);
-    matrix.writeDigitNum(4, speeddisplay % 10, false);
+     //setBrightness(brightness)- brightness of the entire display. 0 is least bright, 15 is brightest (default) 
+     //blinkRate(rate) -   blink entire display. 0 is no blinking. 1, 2 or 3 is for display blinking.
  
     matrix.writeDisplay();
 
