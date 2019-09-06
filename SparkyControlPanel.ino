@@ -52,10 +52,13 @@ TO_SPARKY_DATA_STRUCTURE txdata;
 #define L_STICK_X    2    // horizontal left-right-turn stick axis attached to A2
 #define SHOOTERSPEED 3    // shooter peed knob attached to A3
 
+unsigned long transmitTime;
 unsigned long triggerTime;
 unsigned long headingTime;
 const int panelLedArr[5] = {5,6,9,10,11}; //map of wired pins to LEDs
 long int messageCounter = 0;
+boolean enableFlag;
+boolean disableFlag;
 
 /////////////////////////////////////////////////////////////////////////////
 // FUNCTION: setLED,   returns nothing
@@ -82,7 +85,7 @@ void setup(){
   pinMode(HC05_POWER_ON_LOW_2  , OUTPUT); // 2 LOW is active
 
   Serial.begin(9600);
-  while (!Serial) ; // wait for serial port to connect. Needed for native USB
+  //while (!Serial) ; // wait for serial port to connect. Needed for native USB
   
   //start the library, pass in the data details and the name of the serial port. Can be Serial, Serial1, Serial2, etc.
   ETin.begin(details(rxdata), &Serial);
@@ -109,9 +112,10 @@ void setup(){
   for (int i=0; i<5; i++) {
     pinMode( panelLedArr[i], OUTPUT);
     setLED( i, 255); // on
-    delay(500);
+  }  
+  delay(500);
+  for (int i=0; i<5; i++) {
     setLED( i, 0);
-    delay(500);
   }
 
   matrix.writeDigitRaw(0, 0 );
@@ -130,9 +134,11 @@ void setup(){
   pinMode(TEST_SWITCH     , INPUT_PULLUP); // 4 LOW is on
   pinMode(R_STICK_BUTTON  , INPUT_PULLUP); // 3 LOW is active   not used
   // other pins setup before this
+
+  unsigned long now = millis(); 
+  transmitTime = now +1000;  // wait to do the first transmit until hc05 has a chance to start
+  triggerTime = now + 3000;  // 3 seconds from now, no test mode at powerup
   
-  triggerTime = millis() + 3000;  // 3 seconds from now
-  delay(2000);
   altser.println();
   altser.print("Universal Sparky Control Panel :Created ");
   altser.print( __DATE__ );
@@ -142,61 +148,65 @@ void setup(){
     runTimeMonitorEnabled = false;
     altser.println("Runtime Monitor is disabled");
   }
+  enableFlag = false;
+  disableFlag = false;
 }
 /////////////////////  MAIN LOOP  /////////////////////////////
 void loop(){
   static unsigned long wireTimer0,wireTimer1;
+  boolean warningFlag = false;
+  unsigned long now = millis(); 
+  static int commMissedCount;
   
-  // read our potentiomete rs and buttons and store raw data in data structure for transmission
-  txdata.stickLy = ( ( ( analogRead(R_STICK_X)-512) *3)/7)+512; 
-  txdata.stickLx = txdata.stickLy; 
-  txdata.stickLbutton = LOW;   // no STICK BUTTONs attached
-  txdata.stickRy = ( ( ( ( 1023-(analogRead(L_STICK_X) ) ) -512 )*3)/7)+512; 
-  txdata.stickRx = txdata.stickRy;  
-  txdata.stickRbutton = LOW;
-
-  txdata.drivemode = 1;  //2nd generation control panels only do tank mode.
-  txdata.enabled = !digitalRead(SYSTEM_ENABLE);
+  if ( transmitTime < now ) {  // do a transmit
+    transmitTime = now + 60;  // do the next one in 60 ms
   
-  txdata.shooterspeed = analogRead(SHOOTERSPEED);
+    //First we do the recieve function to pick up the most recent packet 
+    //  just before the transmit function. 
+    //use an if() here to check for new data
+    if ( !ETin.receiveData() ) {
+      delay(10);   // short delay between receive attempts
+      ETin.receiveData();  //do another one when nothing came in first attempt
+      transmitTime = now + 80;    // slow it down some more, add 20 ms
+    }
+    // do one more receive in case there were 2 packets waiting
+    // This is important due to the slight differences in 
+    //the clock speed of different Arduinos. If we didn't do this, messages 
+    //would build up in the buffer and appear to cause a delay.   
+    ETin.receiveData();
 
-  int buttonValue = 240;
-  if( !digitalRead(INTAKE_BUTTON) ){
-    txdata.intake = 1;
-    buttonValue -= 80;
-  }
-  else {
-    txdata.intake = 0;
-  }
-  if( !digitalRead(SHOOT_BUTTON) ){
-    txdata.shoot = HIGH;
-    buttonValue -= 80;
-  }
-  else {
-    txdata.shoot = LOW;
-  }
-  // Check if the controller is enabled
-  if(txdata.enabled){
-    buttonValue -= 80;
+    // now prepare the transmit data
+    // read our potentiometers and buttons and store raw data in data structure
+    txdata.stickLy = ( ( ( analogRead(R_STICK_X)-512) *3)/7)+512; 
+    txdata.stickLx = txdata.stickLy; 
+    txdata.stickLbutton = LOW;   // no STICK BUTTONs attached
+    txdata.stickRy = ( ( ( ( 1023-(analogRead(L_STICK_X) ) ) -512 )*3)/7)+512; 
+    txdata.stickRx = txdata.stickRy;  
+    txdata.stickRbutton = LOW;
+  
+    txdata.drivemode = 1;  //2nd generation control panels only do arcade mode.
+    txdata.enabled = enableFlag;
+    
+    txdata.shooterspeed = analogRead(SHOOTERSPEED);
+  
+    if( !digitalRead(INTAKE_BUTTON) ){
+      txdata.intake = 1;
+    }
+    else {
+      txdata.intake = 0;
+    }
+    if( !digitalRead(SHOOT_BUTTON) ){
+      txdata.shoot = HIGH;
+    }
+    else {
+      txdata.shoot = LOW;
+    }
     messageCounter += 1;
     txdata.counter = messageCounter;
-  }
-  //then we will go ahead and send that data out
-  ETout.sendData();
+    //then we will go ahead and send that data out
+    ETout.sendData();
+  }  // end of communications operations
   
- //there's a loop here so that we run the recieve function more often then the 
- //transmit function. This is important due to the slight differences in 
- //the clock speed of different Arduinos. If we didn't do this, messages 
- //would build up in the buffer and appear to cause a delay.
-  for(int i=0; i<5; i++){
-    //remember, you could use an if() here to check for new data, this time it's not needed.
-    ETin.receiveData();
-    delay(10);   // short delay between receive attempts
-  }
-  
-  //delay for good measure
-  delay(10);
-
 //  *********  RUNTIME DISPLAY or DISPLAY TESTING *****************
   // check is display test on
   if ( digitalRead(TEST_SWITCH) == LOW ) { // LOW is on
@@ -209,9 +219,6 @@ void loop(){
     // once per second 
     if ( testnow >= triggerTime ) {
       triggerTime = testnow + 2000;
-      int value1 = (analogRead(SHOOTERSPEED)+3)>>2;
-      setLED( 3, value1 );
-      setLED( 4, buttonValue);
 
       // ****  AltSerial TESTING ****
       if ( headingTime > testnow ) {
@@ -245,7 +252,7 @@ void loop(){
       }
     }
   }
-//////////////////////   NORMAL DISPLAY   ////////////////////////
+//////////////////////   NORMAL OPERATION   ////////////////////////
   else {  // test mode OFF, show main robot control signals
     static unsigned long updateDue;
     unsigned long now;
@@ -258,6 +265,7 @@ void loop(){
     now = millis();
     if ( now > updateDue ) {
       updateDue = now + 100; // 10 updates per second, max
+      ETin.receiveData();    // also do a synchronous attempt to read
       phase++; phase &= 7;
       if ( phase < 4 ) {
         phasefade = 210 + (phase * 10);
@@ -290,62 +298,113 @@ void loop(){
       static int lastRXcount;
       static int lastTXcount;
       //these should change in 100 ms
-      int commOK = (rxdata.packetreceivedcount != lastRXcount) && (rxdata.transmitpacketcount != lastTXcount); 
-      lastRXcount = rxdata.packetreceivedcount;
-      lastTXcount = rxdata.transmitpacketcount;
-      if ( commOK ) {
-        if ( txdata.enabled ) {
+      boolean commOK;
+      
+      if ( (rxdata.packetreceivedcount != lastRXcount) || (rxdata.transmitpacketcount != lastTXcount) ) {
+        commMissedCount = 0; 
+        lastRXcount = rxdata.packetreceivedcount;
+        lastTXcount = rxdata.transmitpacketcount;
+        commOK = true;
+      } else {
+        commMissedCount += 1;
+        if ( commMissedCount > 7 ) {
+          commOK = false;
+        }
+      }
+   
+      if ( !digitalRead(SYSTEM_ENABLE) ) { // switch on - active low
+        if ( commOK ) {
+          if ( disableFlag ) {  // first time
+            enableFlag = true;   // switch is off
+            disableFlag = false;
+          }
+        } else {
+          enableFlag = false; // disable if comm goes down but don't set disable flag until switch is off
+        }
+        if ( enableFlag ) {
           setLED( ENABLE_LED_3, 255 );  // on
-        } else{
+        } else { // no enable, but the switch is on,  WARNING fast flashing all LEDS
+          if ( (commOK && (phase & 1) ) || (!commOK && (phase & 4)) ) {
+            warningFlag = false; // for 7 seg
+            setLED( ENABLE_LED_3, 255 );
+            setLED( INTAKEBUTTON_LED, 255 );
+            setLED( SHOOTBUTTON_LED, 255 );
+          } else {
+            warningFlag = true; // for 7 seg
+            setLED( ENABLE_LED_3, 0  );
+            setLED( INTAKEBUTTON_LED, 0 );
+            setLED( SHOOTBUTTON_LED, 0 );
+          }
+        }
+      } else {
+        enableFlag = false;   // switch is off
+        disableFlag = true;
+        if( commOK ) {
           if (phase) {
             setLED( ENABLE_LED_3, 0 ); //  short flashing means not enabled
           } else {
             setLED( ENABLE_LED_3, 255 ); 
           }
-        }
-      } else {
-        // no comm - flashing
-        if ( phase & 1 ) {
-          setLED( ENABLE_LED_3, 128 );
-        } else {
-          setLED( ENABLE_LED_3, 0  );
+        } else { // no comm, switch off
+          // no comm, enable off -  slow flashing
+          if ( phase & 4 ) {
+            setLED( ENABLE_LED_3, 128 );
+          } else {
+            setLED( ENABLE_LED_3, 0  );
+          }
         }
       }
-    }  
+    }  // end of 100ms display update  
   } // end of NORMAL DISPLAY
 
   ///////////////////////  TWI code for 7segment display interface ///////////
-  if ( wireTimer1 < (millis() - 500) ) {
+  if ( (wireTimer1 < (millis() - 500)) || warningFlag ) {
     int calctmp;
     static int speeddisplay;
-    
-    wireTimer1 = millis(); // reset
+
+    if (warningFlag) 
+      wireTimer1 = millis()-250; // reset
+    else
+      wireTimer1 = millis(); // reset
     wireTimer0 = micros();
     
     matrix.clear();
-    if ( txdata.enabled ) {
+    if ( enableFlag ) {
       calctmp = (txdata.shooterspeed * 15) / 152;
       if ( abs(calctmp-speeddisplay)>1 ) {
         speeddisplay = calctmp;
       }
       matrix.print(calctmp);
+      if ( commMissedCount > 0 ) {
+        matrix.writeDigitNum(0, commMissedCount);
+      }
 //      matrix.writeDigitNum(1, (speeddisplay / 100) , false);
 //      matrix.writeDigitNum(3, (speeddisplay / 10) % 10 , false);
 //      matrix.writeDigitNum(4, speeddisplay % 10, false);
     } else {
-      calctmp = ((rxdata.supplyvoltagereading*15)+71) / 142; //tenths of a volt resolution
-      matrix.writeDigitNum(0, (calctmp/100) , false);
-      matrix.writeDigitNum(1, (calctmp/10) % 10 , true);
-      matrix.writeDigitNum(3, calctmp % 10 , false);
-      //matrix.drawColon(true);
-      
+      if ( warningFlag ) {
+        warningFlag = false;  // see it one time until it is set again.
+        matrix.writeDigitRaw(0, 0x40);
+        matrix.writeDigitRaw(1, 0x40);
+        matrix.writeDigitRaw(3, 0x40);
+        if ( commMissedCount > 0 ) {
+          matrix.writeDigitNum(4, commMissedCount);
+        } else {
+          matrix.writeDigitRaw(4, 0x40);
+        }
+      } else {
+        calctmp = ((rxdata.supplyvoltagereading*15)+71) / 142; //tenths of a volt resolution
+        matrix.writeDigitNum(0, (calctmp/100) , false);
+        matrix.writeDigitNum(1, (calctmp/10) % 10 , true);
+        matrix.writeDigitNum(3, calctmp % 10 , false);
+      }
     }
-     //setBrightness(brightness)- brightness of the entire display. 0 is least bright, 15 is brightest (default) 
-     //blinkRate(rate) -   blink entire display. 0 is no blinking. 1, 2 or 3 is for display blinking.
+    //setBrightness(brightness)- brightness of the entire display. 0 is least bright, 15 is brightest (default) 
+    //blinkRate(rate) -   blink entire display. 0 is no blinking. 1, 2 or 3 is for display blinking.
  
     matrix.writeDisplay();
 
-    wireTimer0 = micros() - wireTimer0;     // how long did this take?
+    wireTimer0 = micros() - wireTimer0;  // how long did this take? Sent in monitor display if enabled
   }
 }
 
