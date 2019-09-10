@@ -177,11 +177,11 @@ void loop(){
 
     // now prepare the transmit data
     // read our potentiometers and buttons and store raw data in data structure
-    txdata.stickLy = ( ( ( analogRead(R_STICK_X)-512) *3)/7)+512; 
-    txdata.stickLx = txdata.stickLy; 
+    txdata.stickLx = ( ( (        analogRead(R_STICK_X)   -512 ) *3)/7)+512; 
+    txdata.stickRx = ( ( ( (1023-(analogRead(L_STICK_X))) -512 ) *3)/7)+512; 
+    //txdata.stickRx = txdata.stickRy;  
+    //txdata.stickLx = txdata.stickLy; 
     txdata.stickLbutton = LOW;   // no STICK BUTTONs attached
-    txdata.stickRy = ( ( ( ( 1023-(analogRead(L_STICK_X) ) ) -512 )*3)/7)+512; 
-    txdata.stickRx = txdata.stickRy;  
     txdata.stickRbutton = LOW;
   
     txdata.drivemode = 1;  //2nd generation control panels only do arcade mode.
