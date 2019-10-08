@@ -10,7 +10,7 @@ Developed by Miss Daisy FRC Team 341
 //  this is for test mode
 #include <AltSoftSerial.h>
 AltSoftSerial altser;
-const int mybaud = 600;
+//const int mybaud = 600;
 boolean runTimeMonitorEnabled = false;
 // D8 - AltSoftSerial RX
 // D9 - AltSoftSerial TX
@@ -32,6 +32,7 @@ EasyTransfer ETin, ETout;
 // reverse naming on opposite ends
 FROM_SPARKY_DATA_STRUCTURE rxdata;
 TO_SPARKY_DATA_STRUCTURE txdata;
+TO_SPARKY_PACKET_STRUCTURE txpacket;
 
 //#define DRIVE_MODE        13 
 #define SYSTEM_ENABLE   12
@@ -50,7 +51,7 @@ TO_SPARKY_DATA_STRUCTURE txdata;
 #define R_STICK_X    0    // vertical forward-backward stick axis attached to A0
 //#define R_STICK_Y      1
 #define L_STICK_X    2    // horizontal left-right-turn stick axis attached to A2
-#define SHOOTERSPEED 3    // shooter peed knob attached to A3
+#define SHOOTERSPEED 3    // shooter speed knob attached to A3
 
 unsigned long transmitTime;
 unsigned long triggerTime;
@@ -89,8 +90,8 @@ void setup(){
   
   //start the library, pass in the data details and the name of the serial port. Can be Serial, Serial1, Serial2, etc.
   ETin.begin(details(rxdata), &Serial);
-  ETout.begin(details(txdata), &Serial);
-
+  ETout.begin(details(txpacket), &Serial);
+  
   altser.begin(600);
 
   // Wire. is a TwoWire type object declared in the include file Wire.h
@@ -177,33 +178,45 @@ void loop(){
 
     // now prepare the transmit data
     // read our potentiometers and buttons and store raw data in data structure
-    txdata.stickLx = ( ( (        analogRead(R_STICK_X)   -512 ) *3)/7)+512; 
+    txdata.stickLx = ( ( ( (1023-(analogRead(R_STICK_X))) -512 ) *3)/7)+512; 
     txdata.stickRx = ( ( ( (1023-(analogRead(L_STICK_X))) -512 ) *3)/7)+512; 
     txdata.stickRy = txdata.stickRx;  
-    txdata.stickLy = txdata.stickLx; 
-    txdata.stickLbutton = LOW;   // no STICK BUTTONs attached
-    txdata.stickRbutton = LOW;
-  
-    txdata.drivemode = 1;  //2nd generation control panels only do arcade mode.
-    txdata.enabled = enableFlag;
-    
+    //txdata.stickLy = txdata.stickLx; 
+    //txdata.stickLbutton = LOW;   // no STICK BUTTONs attached
+    //txdata.stickRbutton = LOW;
+
+// ##############  PACKING   tx data into txpacket for transmission   ############  
     txdata.shooterspeed = analogRead(SHOOTERSPEED);
+    txpacket.packedControls = txdata.shooterspeed;  // ##############  PACKING ###########
   
     if( !digitalRead(INTAKE_BUTTON) ){
       txdata.intake = 1;
+      txpacket.packedControls &= 0x0400;            // ##############  PACKING ###########
     }
     else {
       txdata.intake = 0;
     }
     if( !digitalRead(SHOOT_BUTTON) ){
       txdata.shoot = HIGH;
+      txpacket.packedControls &= 0x0800;            // ##############  PACKING ###########
     }
     else {
       txdata.shoot = LOW;
     }
+
+    txdata.drivemode = 1;  //2nd generation control panels only do arcade mode.
+    txpacket.packedControls &= 0x1000;             // ##############  PACKING ###########
+
+    if ( enableFlag ) {
+      txdata.enabled = true;
+      txpacket.packedControls &= 0x2000;           // ##############  PACKING ###########
+    } else {
+      txdata.enabled = false;
+    }
+    
     messageCounter += 1;
     txdata.counter = messageCounter;
-    //then we will go ahead and send that data out
+    //then we will go ahead and send that data packet out
     ETout.sendData();
   }  // end of communications operations
   
@@ -228,26 +241,26 @@ void loop(){
         altser.print( ", " );
         altser.print( rxdata.packetreceivedcount );
         altser.print( ", " );
-        altser.print( rxdata.shooterspeedecho );
-        altser.print( ", " );
+        //altser.print( rxdata.shooterspeedecho );
+        //altser.print( ", " );
         altser.print( txdata.enabled );
         altser.print( ", " );
         altser.print( rxdata.ballready );
         altser.print( " [" );
         altser.print( txdata.stickLx );
         altser.print( " " );
-        altser.print( txdata.stickLy );
-        altser.print( " " );
+        //altser.print( txdata.stickLy );
+        //altser.print( " " );
         altser.print( txdata.stickRx );
         altser.print( " " );
         altser.print( txdata.stickRy );  
         altser.print( " " );
         altser.print( wireTimer0 );  
         altser.print( " " );
-        altser.println( rxdata.spare2 );
+        //altser.println( rxdata.spare2 );
        
       } else {
-        altser.println( "VOLT XMIT RECV SSECHO D12 BALL LX ly RX RL" );
+        altser.println( "VOLT XMIT RECV D12 BALL LX RX RL" );
         headingTime = testnow + 20000;
       }
     }
